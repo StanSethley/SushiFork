@@ -4,8 +4,8 @@ import java.io.File;
 import java.util.HashSet;
 import java.util.List;
 
+import mcsushi.dynamicshop.sushidynamicshop.util.ColorUtil;
 import mcsushi.dynamicshop.sushidynamicshop.editor.ShopEditorGUI;
-import mcsushi.dynamicshop.sushidynamicshop.gui.ShopHolder;
 import mcsushi.dynamicshop.sushidynamicshop.hook.MMOItemHook;
 import mcsushi.dynamicshop.sushidynamicshop.init.PremiumInitializer;
 import mcsushi.dynamicshop.sushidynamicshop.pricehandler.PriceHandler;
@@ -22,6 +22,7 @@ import mcsushi.dynamicshop.sushidynamicshop.util.VanillaItemFactory;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
+import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.HumanEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
@@ -32,6 +33,8 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
 public class ShopGUI {
+
+    private static int cachedBackSlot = 49;
 
     public static void open(Player player, String shopId) {
         if (!ShopConfig.hasShop(shopId)) {
@@ -46,7 +49,7 @@ public class ShopGUI {
         Inventory inv = Bukkit.createInventory(
                 new ShopHolder(shopId, ShopConfig.getShopConfig(shopId), file, 0, 0),
                 slotCount,
-                ChatColor.translateAlternateColorCodes('&', ShopConfig.getShopName(shopId))
+                ColorUtil.parseColors(ShopConfig.getShopName(shopId))
         );
 
         Material decoMaterial = ShopConfig.getShopDeco(shopId);
@@ -65,26 +68,68 @@ public class ShopGUI {
             }
         }
 
+        // Back button configuration
+        ConfigurationSection buttonCfg = ShopConfig.getShopConfig(shopId).getConfigurationSection("back_button");
+        boolean useCustom = buttonCfg != null && buttonCfg.getBoolean("custom_slot_location", false);
+
         int backSlot;
-        switch (slotCount) {
-            case 27 -> backSlot = 22;
-            case 36 -> backSlot = 31;
-            case 45 -> backSlot = 40;
-            case 54 -> backSlot = 49;
-            default -> {
-                Bukkit.getLogger().warning("[Sushidynamicshop] Invalid slot count: " + slotCount);
-                return;
+        if (useCustom) {
+            backSlot = buttonCfg.getInt("back_slot", 49);
+        } else {
+            switch (slotCount) {
+                case 27 -> backSlot = 22;
+                case 36 -> backSlot = 31;
+                case 45 -> backSlot = 40;
+                case 54 -> backSlot = 49;
+                default -> {
+                    Bukkit.getLogger().warning("[Sushidynamicshop] Invalid slot count: " + slotCount);
+                    return;
+                }
             }
         }
 
-        ItemStack back = new ItemStack(Material.BARRIER);
-        ItemMeta backMeta = back.getItemMeta();
-        if (backMeta != null) {
-            backMeta.setDisplayName(TranslationUtil.get("back"));
-            back.setItemMeta(backMeta);
+        cachedBackSlot = backSlot;
+
+        ItemStack back = null;
+        if (buttonCfg != null) {
+            String source = buttonCfg.getString("material", "BARRIER");
+            if (source.toLowerCase().startsWith("itemadder:")) {
+                String id = source.substring("itemadder:".length());
+                back = ItemAdderUtil.createItem(id, 1);
+            } else if (source.toLowerCase().startsWith("mmoitem:")) {
+                back = MMOItemHook.isHooked() ? MMOItemFactory.createItem(source) : new ItemStack(Material.BARRIER);
+            } else if (source.toLowerCase().startsWith("nexo:")) {
+                String id = source.substring("nexo:".length());
+                back = Nexoutil.createItem(id, 1);
+                if (back == null || back.getType() == Material.BARRIER) {
+                    back = new ItemStack(Material.BARRIER);
+                }
+            } else {
+                back = VanillaItemFactory.createItem(source);
+            }
+
+            if (back == null) {
+                back = new ItemStack(Material.BARRIER);
+            }
+
+            ItemMeta backMeta = back.getItemMeta();
+            if (backMeta != null) {
+                String displayName = buttonCfg.getString("display_name", TranslationUtil.get("back"));
+                backMeta.setDisplayName(ColorUtil.parseColors(displayName));
+                back.setItemMeta(backMeta);
+            }
+        } else {
+            back = new ItemStack(Material.BARRIER);
+            ItemMeta backMeta = back.getItemMeta();
+            if (backMeta != null) {
+                backMeta.setDisplayName(TranslationUtil.get("back"));
+                back.setItemMeta(backMeta);
+            }
         }
+
         inv.setItem(backSlot, back);
 
+        // Load shop items
         for (String key : itemKeys) {
             ItemStack item;
             String source = ShopConfig.getSource(shopId, key);
@@ -163,6 +208,19 @@ public class ShopGUI {
         }
 
         if (clickedSlot < 0 || clickedSlot >= maxSlot) {
+            return;
+        }
+
+        if (clickedSlot == cachedBackSlot) {
+            ConfigurationSection buttonCfg = ShopConfig.getShopConfig(shopHolder.getShopId()).getConfigurationSection("back_button");
+            if (buttonCfg != null && buttonCfg.contains("command")) {
+                String command = buttonCfg.getString("command");
+                if (command != null && !command.isEmpty()) {
+                    player.performCommand(command.startsWith("/") ? command.substring(1) : command);
+                    return;
+                }
+            }
+            player.closeInventory();
             return;
         }
 

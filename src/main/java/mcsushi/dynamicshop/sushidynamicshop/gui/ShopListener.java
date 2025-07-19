@@ -1,25 +1,3 @@
-/*
- * Decompiled with CFR 0.152.
- * 
- * Could not load the following classes:
- *  io.lumine.mythic.lib.api.item.NBTItem
- *  org.bukkit.Bukkit
- *  org.bukkit.ChatColor
- *  org.bukkit.Material
- *  org.bukkit.Sound
- *  org.bukkit.configuration.ConfigurationSection
- *  org.bukkit.configuration.file.FileConfiguration
- *  org.bukkit.entity.HumanEntity
- *  org.bukkit.entity.Player
- *  org.bukkit.event.EventHandler
- *  org.bukkit.event.Listener
- *  org.bukkit.event.inventory.ClickType
- *  org.bukkit.event.inventory.InventoryClickEvent
- *  org.bukkit.event.inventory.InventoryDragEvent
- *  org.bukkit.inventory.Inventory
- *  org.bukkit.inventory.InventoryHolder
- *  org.bukkit.inventory.ItemStack
- */
 package mcsushi.dynamicshop.sushidynamicshop.gui;
 
 import io.lumine.mythic.lib.api.item.NBTItem;
@@ -48,6 +26,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.Sound;
+import org.bukkit.SoundCategory;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.HumanEntity;
@@ -61,8 +40,8 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
 
-public class ShopListener
-implements Listener {
+public class ShopListener implements Listener {
+
     private ItemStack createItem(String source) {
         if (source == null || source.trim().isEmpty()) {
             return new ItemStack(Material.BARRIER);
@@ -82,96 +61,132 @@ implements Listener {
                 return item;
             }
             return VanillaItemFactory.createItem(source);
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
             e.printStackTrace();
             return new ItemStack(Material.BARRIER);
         }
     }
 
+    private void handleBackButton(Player player, FileConfiguration config, boolean isShop) {
+        if (config == null || !config.contains("back_button.commands_enabled")) {
+            if (isShop) {
+                CategoryMenuGUI.open(player);
+            } else {
+                player.closeInventory();
+            }
+            return;
+        }
+
+        boolean enabled = config.getBoolean("back_button.commands_enabled", false);
+        if (!enabled) {
+            if (isShop) {
+                CategoryMenuGUI.open(player);
+            } else {
+                player.closeInventory();
+            }
+            return;
+        }
+
+        if (config.contains("back_button.commands")) {
+            for (String command : config.getStringList("back_button.commands")) {
+                player.performCommand(command);
+            }
+        }
+
+        if (config.getBoolean("back_button.close_menu_on_run", false)) {
+            player.closeInventory();
+        }
+
+        if (config.contains("back_button.exit_sound")) {
+            String soundStr = config.getString("back_button.exit_sound");
+            try {
+                Sound sound = Sound.valueOf(soundStr.toUpperCase());
+                player.playSound(player.getLocation(), sound, SoundCategory.MASTER, 1f, 1f);
+            } catch (IllegalArgumentException ignored) {}
+        }
+    }
+
     @EventHandler
     public void onGUIClick(InventoryClickEvent event) {
+        double totalPrice;
+        int tempSupply;
+        int tempDemand;
+        int amount;
+        boolean success;
+        CurrencyRegistry registry;
+        boolean exists;
+        String pronoun;
+
         Inventory top = event.getView().getTopInventory();
+
         if (top.getHolder() instanceof CategoryMenuHolder) {
             if (event.getRawSlot() < top.getSize()) {
                 event.setCancelled(true);
                 HumanEntity humanEntity = event.getWhoClicked();
-                if (humanEntity instanceof Player) {
-                    String categoryId;
-                    Player player = (Player)humanEntity;
+                if (humanEntity instanceof Player player) {
                     int slot = event.getSlot();
-                    if (slot == (switch (top.getSize()) {
+                    FileConfiguration categoryConfig = CategoryConfig.get();
+                    ConfigurationSection backSection = categoryConfig.getConfigurationSection("back_button");
+                    int backSlot = switch (top.getSize()) {
                         case 27 -> 22;
                         case 36 -> 31;
                         case 45 -> 40;
                         case 54 -> 49;
                         default -> -1;
-                    })) {
-                        player.closeInventory();
+                    };
+                    if (backSection != null && backSection.getBoolean("custom_slot_location", false)) {
+                        backSlot = backSection.getInt("back_slot", backSlot);
+                    }
+
+                    if (slot == backSlot) {
+                        handleBackButton(player, categoryConfig, false);
                         return;
                     }
-                    if (event.getClick() == ClickType.SHIFT_RIGHT && player.isOp() && (categoryId = CategoryConfig.getCategoryIdBySlot(slot)) != null) {
-                        CategoryEditorGUI.open(player, categoryId);
+
+                    if (event.getClick() == ClickType.SHIFT_RIGHT && player.isOp()) {
+                        String categoryId = CategoryConfig.getCategoryIdBySlot(slot);
+                        if (categoryId != null) {
+                            CategoryEditorGUI.open(player, categoryId);
+                        }
                         return;
                     }
+
                     CategoryMenuGUI.handleClick(player, slot);
                 }
             }
             return;
         }
+
         InventoryHolder slot = top.getHolder();
-        if (slot instanceof ShopHolder) {
-            ShopHolder holder = (ShopHolder)slot;
+        if (slot instanceof ShopHolder holder) {
             if (event.getRawSlot() < top.getSize()) {
-                String pronoun;
-                boolean exists;
-                CurrencyRegistry registry;
-                boolean success;
-                int tempDemand;
-                int tempSupply;
-                double totalPrice;
-                int amount;
-                int backSlot;
                 event.setCancelled(true);
                 ShopGUI.handleClick(event);
-                HumanEntity closeSlot = event.getWhoClicked();
-                if (!(closeSlot instanceof Player)) {
-                    return;
-                }
-                Player player = (Player)closeSlot;
+                HumanEntity actor = event.getWhoClicked();
+                if (!(actor instanceof Player player)) return;
+
                 int slot2 = event.getSlot();
-                switch (top.getSize()) {
-                    case 27: {
-                        backSlot = 22;
-                        break;
-                    }
-                    case 36: {
-                        backSlot = 31;
-                        break;
-                    }
-                    case 45: {
-                        backSlot = 40;
-                        break;
-                    }
-                    case 54: {
-                        backSlot = 49;
-                        break;
-                    }
-                    default: {
-                        Bukkit.getLogger().warning("[Sushidynamicshop] Invalid slot size: " + top.getSize());
-                        return;
-                    }
+                String shopId = holder.getShopId();
+
+                FileConfiguration shopConfig = ShopConfig.getShopConfig(shopId);
+                ConfigurationSection backSection = shopConfig.getConfigurationSection("back_button");
+                int backSlot = switch (top.getSize()) {
+                    case 27 -> 22;
+                    case 36 -> 31;
+                    case 45 -> 40;
+                    case 54 -> 49;
+                    default -> -1;
+                };
+                if (backSection != null && backSection.getBoolean("custom_slot_location", false)) {
+                    backSlot = backSection.getInt("back_slot", backSlot);
                 }
+
                 if (slot2 == backSlot) {
-                    event.setCancelled(true);
-                    CategoryMenuGUI.open(player);
+                    handleBackButton(player, shopConfig, true);
                     return;
                 }
-                String shopId = holder.getShopId();
+
                 if (event.getClick() == ClickType.DROP) {
-                    if (!player.isOp()) {
-                        return;
-                    }
                     if (!player.isOp()) {
                         return;
                     }
@@ -348,7 +363,6 @@ implements Listener {
             }
         }
     }
-
     private int countItem(Player player, String source) {
         ItemStack target = this.createItem(source);
         if (target.getType() == Material.BARRIER) {
@@ -418,7 +432,6 @@ implements Listener {
             if ((amount -= remove) <= 0) break;
         }
     }
-
     @EventHandler
     public void onGUIDrag(InventoryDragEvent event) {
         Inventory top = event.getView().getTopInventory();
@@ -426,5 +439,5 @@ implements Listener {
             event.setCancelled(true);
         }
     }
-}
 
+}

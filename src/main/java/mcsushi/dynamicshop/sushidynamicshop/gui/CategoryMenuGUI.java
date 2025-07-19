@@ -3,9 +3,12 @@ package mcsushi.dynamicshop.sushidynamicshop.gui;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import mcsushi.dynamicshop.sushidynamicshop.util.ColorUtil;
 import mcsushi.dynamicshop.sushidynamicshop.config.CategoryConfig;
-import mcsushi.dynamicshop.sushidynamicshop.gui.CategoryMenuHolder;
-import mcsushi.dynamicshop.sushidynamicshop.gui.ShopGUI;
+import mcsushi.dynamicshop.sushidynamicshop.hook.MMOItemHook;
+import mcsushi.dynamicshop.sushidynamicshop.util.ItemAdderUtil;
+import mcsushi.dynamicshop.sushidynamicshop.util.MMOItemFactory;
+import mcsushi.dynamicshop.sushidynamicshop.util.Nexoutil;
 import mcsushi.dynamicshop.sushidynamicshop.util.TranslationUtil;
 import mcsushi.dynamicshop.sushidynamicshop.util.VanillaItemFactory;
 import org.bukkit.Bukkit;
@@ -75,12 +78,12 @@ public class CategoryMenuGUI {
                 ItemStack item = VanillaItemFactory.createIconFromSection(section);
                 ItemMeta meta = item.getItemMeta();
                 if (meta != null) {
-                    meta.setDisplayName(ChatColor.translateAlternateColorCodes('&', section.getString("name", key)));
+                    meta.setDisplayName(ColorUtil.parseColors(section.getString("name", key)));
 
                     List<String> rawLore = section.getStringList("lore");
                     ArrayList<String> coloredLore = new ArrayList<>();
                     for (String line : rawLore) {
-                        coloredLore.add(ChatColor.translateAlternateColorCodes('&', line));
+                        coloredLore.add(ColorUtil.parseColors(line));
                     }
                     meta.setLore(coloredLore);
                     item.setItemMeta(meta);
@@ -89,21 +92,58 @@ public class CategoryMenuGUI {
             }
         }
 
+        ConfigurationSection buttonCfg = CategoryConfig.get().getConfigurationSection("back_button");
+        boolean useCustom = buttonCfg != null && buttonCfg.getBoolean("custom_slot_location", false);
+
         int closeSlot;
-        switch (slotSize) {
-            case 27 -> closeSlot = 22;
-            case 36 -> closeSlot = 31;
-            case 45 -> closeSlot = 40;
-            case 54 -> closeSlot = 49;
-            default -> closeSlot = slotSize - 5;
+        if (useCustom) {
+            closeSlot = buttonCfg.getInt("back_slot", 49);
+        } else {
+            switch (slotSize) {
+                case 27 -> closeSlot = 22;
+                case 36 -> closeSlot = 31;
+                case 45 -> closeSlot = 40;
+                case 54 -> closeSlot = 49;
+                default -> closeSlot = slotSize - 5;
+            }
         }
 
         if (closeSlot >= 0 && closeSlot < slotSize) {
-            ItemStack close = new ItemStack(Material.BARRIER);
-            ItemMeta closeMeta = close.getItemMeta();
-            if (closeMeta != null) {
-                closeMeta.setDisplayName(TranslationUtil.get("close"));
-                close.setItemMeta(closeMeta);
+            ItemStack close = null;
+            if (buttonCfg != null) {
+                String source = buttonCfg.getString("material", "BARRIER");
+                if (source.toLowerCase().startsWith("itemadder:")) {
+                    String id = source.substring("itemadder:".length());
+                    close = ItemAdderUtil.createItem(id, 1);
+                } else if (source.toLowerCase().startsWith("mmoitem:")) {
+                    close = MMOItemHook.isHooked() ? MMOItemFactory.createItem(source) : new ItemStack(Material.BARRIER);
+                } else if (source.toLowerCase().startsWith("nexo:")) {
+                    String id = source.substring("nexo:".length());
+                    close = Nexoutil.createItem(id, 1);
+                    if (close == null || close.getType() == Material.BARRIER) {
+                        close = new ItemStack(Material.BARRIER);
+                    }
+                } else {
+                    close = VanillaItemFactory.createItem(source);
+                }
+
+                if (close == null) {
+                    close = new ItemStack(Material.BARRIER);
+                }
+
+                ItemMeta closeMeta = close.getItemMeta();
+                if (closeMeta != null) {
+                    String displayName = buttonCfg.getString("display_name", TranslationUtil.get("close"));
+                    closeMeta.setDisplayName(ColorUtil.parseColors(displayName));
+                    close.setItemMeta(closeMeta);
+                }
+            } else {
+                close = new ItemStack(Material.BARRIER);
+                ItemMeta closeMeta = close.getItemMeta();
+                if (closeMeta != null) {
+                    closeMeta.setDisplayName(TranslationUtil.get("close"));
+                    close.setItemMeta(closeMeta);
+                }
             }
             gui.setItem(closeSlot, close);
         } else {
@@ -114,10 +154,6 @@ public class CategoryMenuGUI {
     }
 
     public static void handleClick(Player player, int slot) {
-        if (slot == 49) {
-            player.closeInventory();
-            return;
-        }
 
         String shopId = CategoryConfig.getShopIdBySlot(slot);
         if (shopId == null || shopId.isEmpty()) {
