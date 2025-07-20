@@ -1,6 +1,6 @@
 /*
  * Decompiled with CFR 0.152.
- * 
+ *
  * Could not load the following classes:
  *  org.bukkit.Bukkit
  *  org.bukkit.configuration.ConfigurationSection
@@ -13,6 +13,7 @@ package mcsushi.dynamicshop.sushidynamicshop.config;
 import java.io.File;
 import java.io.IOException;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.Set;
 import org.bukkit.Bukkit;
 import org.bukkit.configuration.ConfigurationSection;
@@ -29,7 +30,7 @@ public class CategoryConfig {
         if (!file.exists()) {
             plugin.saveResource("category.yml", false);
         }
-        config = YamlConfiguration.loadConfiguration((File)file);
+        config = YamlConfiguration.loadConfiguration(file);
     }
 
     public static FileConfiguration get() {
@@ -39,14 +40,13 @@ public class CategoryConfig {
     public static void save() {
         try {
             config.save(file);
-        }
-        catch (IOException e) {
+        } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
     public static void reload() {
-        config = YamlConfiguration.loadConfiguration((File)file);
+        config = YamlConfiguration.loadConfiguration(file);
     }
 
     public static boolean hasCategory(String id) {
@@ -116,5 +116,50 @@ public class CategoryConfig {
         }
         return "";
     }
-}
 
+    /* -------------------------------------
+     *  Helper methods for OpenCommand
+     * ------------------------------------- */
+
+    /**
+     * Get the permission node required for a given shop ID
+     * Returns an empty string if no permission is defined
+     */
+    public static String getPermissionByShopId(String shopId) {
+        ConfigurationSection categories = config.getConfigurationSection("categories");
+        if (categories == null) {
+            return "";
+        }
+        for (String key : categories.getKeys(false)) {
+            ConfigurationSection section = categories.getConfigurationSection(key);
+            if (section == null) continue;
+
+            String cfgShopId = section.getString("shopid", key);
+            if (cfgShopId != null && cfgShopId.equalsIgnoreCase(shopId)) {
+                return section.getString("permission", "");
+            }
+        }
+        return "";
+    }
+
+    /**
+     * Retrieve a set containing every shop ID defined in the category config
+     */
+    public static Set<String> getAllShopIds() {
+        Set<String> result = new HashSet<>();
+        ConfigurationSection categories = config.getConfigurationSection("categories");
+        if (categories == null) {
+            return result;
+        }
+        for (String key : categories.getKeys(false)) {
+            ConfigurationSection section = categories.getConfigurationSection(key);
+            if (section == null) continue;
+
+            String cfgShopId = section.getString("shopid", key);
+            if (cfgShopId != null && !cfgShopId.isEmpty()) {
+                result.add(cfgShopId);
+            }
+        }
+        return result;
+    }
+}

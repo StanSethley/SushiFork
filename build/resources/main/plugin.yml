@@ -1,5 +1,5 @@
 name: Sushidynamicshop
-version: 1.3
+version: 1.5
 main: mcsushi.dynamicshop.sushidynamicshop.Sushidynamicshop
 api-version: 1.20
 authors: [NogginTime, StanSethley]
@@ -16,3 +16,9 @@ permissions:
   sushishop.open:
     description: Allows opening the sushi shop menu
     default: true
+  sushishop.open.self:
+    description: Allows opening shops for yourself using /sshop open <shopId>
+    default: true
+  sushishop.open.others:
+    description: Allows opening shops for other players using /sshop open <shopId> <player>
+    default: op
